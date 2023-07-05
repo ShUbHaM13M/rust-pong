@@ -1,5 +1,5 @@
-use ggez::{event, GameError};
-use ggez::graphics::{self, Color};
+use ggez::{ event, GameError };
+use ggez::graphics::{ self, Color, Drawable };
 use ggez::{ Context, GameResult };
 use ggez::glam::*;
 use ggez::input::keyboard::KeyCode;
@@ -18,22 +18,30 @@ const PADDLE_RECT: graphics::Rect = graphics::Rect::new(
     PADDLE_HEIGHT,
 );
 
-const BALL_SIZE: f32 = 20.0;
-const BALL_SIZE_HALF: f32 = BALL_SIZE * 0.5;
-const BALL_SPEED: f32 = 10.0;
+const BALL_SIZE: f32 = 16.0;
+const BALL_SPEED: f32 = 20.0;
 
 const PADDING: f32 = 10.0;
 
 
 struct MainState {
     player_1_pos: Vec2,
+    player_1_score: i32,
     player_2_pos: Vec2,
+    player_2_score: i32,
     ball_pos: Vec2,
     ball_velocity: Vec2,
 }
 
 impl MainState {
-    fn new(ctx: &Context) -> GameResult<MainState> {
+    fn new(ctx: &mut Context) -> GameResult<MainState> {
+
+        // Loading custom font
+        ctx.gfx.add_font(
+            "Arcade Classic",
+            graphics::FontData::from_path(ctx, "/ArcadeClassic.ttf")?
+        );
+
         let mut rng = rand::thread_rng();
         let (screen_width, screen_height) = ctx.gfx.drawable_size();
         let s = MainState { 
@@ -41,6 +49,9 @@ impl MainState {
             player_2_pos: Vec2::new(screen_width - 20.0 - PADDING, screen_height * 0.5),
             ball_pos: Vec2::new(screen_width * 0.5, screen_height * 0.5),
             ball_velocity: Vec2::new(rng.gen(), rng.gen()),
+            // ball_velocity: Vec2::new(-1.0, 0.0),
+            player_1_score: 0,
+            player_2_score: 0,
         };
         Ok(s)
     }
@@ -74,22 +85,30 @@ fn move_racket (ctx: &Context, keycode: KeyCode, pos: &mut Vec2, dir: f32) {
 }
 
 fn move_ball (ctx: &Context, pos: &mut Vec2, vel: &mut Vec2) {
-    let (screen_width, screen_height) = ctx.gfx.drawable_size();
+    let screen_height = ctx.gfx.drawable_size().1;
     pos.x += vel.x * BALL_SPEED;
     pos.y += vel.y * BALL_SPEED;
-
-    if pos.x <= BALL_SIZE || pos.x >= screen_width - BALL_SIZE {
-        vel.x *= -1.0;
-    }
 
     if pos.y <= BALL_SIZE || pos.y >= screen_height - BALL_SIZE {
         vel.y *= -1.0;
     }
+}
 
+fn reset_game(game_state: &mut MainState, ctx: &mut Context) {
+    let (screen_width, screen_height) = ctx.gfx.drawable_size();
+    game_state.ball_pos = Vec2::new(screen_width * 0.5, screen_height * 0.5);
+}
+
+fn check_collision(ball: Vec2, paddle: Vec2) -> bool {
+    return ball.x < paddle.x + PADDLE_WIDTH
+        && ball.x > paddle.x - PADDLE_WIDTH
+        && ball.y < paddle.y + PADDLE_HEIGHT_HALF
+        && ball.y > paddle.y - PADDLE_HEIGHT_HALF; 
 }
 
 impl event::EventHandler<ggez::GameError> for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult {
+        let screen_width = ctx.gfx.drawable_size().0;
         move_racket(ctx, KeyCode::W, &mut self.player_1_pos, -1.0);
         move_racket(ctx, KeyCode::S, &mut self.player_1_pos, 1.0);
         move_racket(ctx, KeyCode::Up, &mut self.player_2_pos, 1.0);
@@ -97,10 +116,25 @@ impl event::EventHandler<ggez::GameError> for MainState {
 
         move_ball(ctx, &mut self.ball_pos, &mut self.ball_velocity);
 
+        if self.ball_pos.x < 0.0 {
+            self.player_2_score += 1;
+            reset_game(self, ctx);
+        }
+        if self.ball_pos.x > screen_width {
+            self.player_1_score += 1;
+            reset_game(self, ctx);
+        }
+
+        if check_collision(self.ball_pos, self.player_1_pos) 
+            || check_collision(self.ball_pos, self.player_2_pos) {
+            self.ball_velocity.x *= -1.0;
+        }
+
         Ok(())
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
+        let (screen_width, screen_height) = ctx.gfx.drawable_size();
         let mut canvas = graphics::Canvas::from_frame(
             ctx, 
             Color::BLACK
@@ -123,6 +157,18 @@ impl event::EventHandler<ggez::GameError> for MainState {
 
         canvas.draw(&ball, self.ball_pos);
 
+        let mut score_text = ggez::graphics::Text::new(format!("{}              {}", self.player_1_score, self.player_2_score));
+        score_text.set_font("Arcade Classic");
+        score_text.set_scale(40.0);
+
+        canvas.draw(
+            &score_text,
+            Vec2::new(
+                screen_width * 0.5 - score_text.dimensions(ctx).unwrap_or_else(|| graphics::Rect::default()).w * 0.5, 
+                screen_height * 0.1
+            )
+        );
+
         canvas.finish(ctx)?;
         Ok(())
     }
@@ -130,8 +176,8 @@ impl event::EventHandler<ggez::GameError> for MainState {
 
 fn main() -> GameResult {
     let cb = ggez::ContextBuilder::new("Pong", "Shubham");
-    let (ctx, event_loop) = cb.build()?;
-    let state = MainState::new(&ctx)?;
+    let (mut ctx, event_loop) = cb.build()?;
+    let state = MainState::new(&mut ctx)?;
     ctx.gfx.set_window_title("Pong");
     event::run(ctx, event_loop, state)
 }

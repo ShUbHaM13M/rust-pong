@@ -1,4 +1,5 @@
-use ggez::{ event, GameError };
+use ggez::audio::SoundSource;
+use ggez::{ event, GameError, audio };
 use ggez::graphics::{ self, Color, Drawable };
 use ggez::{ Context, GameResult };
 use ggez::glam::*;
@@ -31,6 +32,9 @@ struct MainState {
     player_2_score: i32,
     ball_pos: Vec2,
     ball_velocity: Vec2,
+    jump_sound: audio::Source,
+    pickup_sound: audio::Source,
+    paused: bool,
 }
 
 impl MainState {
@@ -42,6 +46,9 @@ impl MainState {
             graphics::FontData::from_path(ctx, "/ArcadeClassic.ttf")?
         );
 
+        let jump_sound = audio::Source::new(ctx, "/Jump.wav")?;
+        let pickup_sound = audio::Source::new(ctx, "/Pickup.wav")?;
+
         let mut rng = rand::thread_rng();
         let (screen_width, screen_height) = ctx.gfx.drawable_size();
         let s = MainState { 
@@ -49,9 +56,11 @@ impl MainState {
             player_2_pos: Vec2::new(screen_width - 20.0 - PADDING, screen_height * 0.5),
             ball_pos: Vec2::new(screen_width * 0.5, screen_height * 0.5),
             ball_velocity: Vec2::new(rng.gen(), rng.gen()),
-            // ball_velocity: Vec2::new(-1.0, 0.0),
             player_1_score: 0,
             player_2_score: 0,
+            jump_sound,
+            pickup_sound,
+            paused: true,
         };
         Ok(s)
     }
@@ -95,8 +104,12 @@ fn move_ball (ctx: &Context, pos: &mut Vec2, vel: &mut Vec2) {
 }
 
 fn reset_game(game_state: &mut MainState, ctx: &mut Context) {
+    let mut rng = rand::thread_rng();
     let (screen_width, screen_height) = ctx.gfx.drawable_size();
     game_state.ball_pos = Vec2::new(screen_width * 0.5, screen_height * 0.5);
+    game_state.ball_velocity = Vec2::new(rng.gen(), rng.gen());
+    let _ = game_state.pickup_sound.play(ctx);
+    game_state.paused = true;
 }
 
 fn check_collision(ball: Vec2, paddle: Vec2) -> bool {
@@ -108,6 +121,14 @@ fn check_collision(ball: Vec2, paddle: Vec2) -> bool {
 
 impl event::EventHandler<ggez::GameError> for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult {
+
+        if self.paused {
+            if ctx.keyboard.is_key_pressed(KeyCode::Space) {
+                self.paused = false;
+            }
+            return Ok(())
+        }
+
         let screen_width = ctx.gfx.drawable_size().0;
         move_racket(ctx, KeyCode::W, &mut self.player_1_pos, -1.0);
         move_racket(ctx, KeyCode::S, &mut self.player_1_pos, 1.0);
@@ -128,6 +149,7 @@ impl event::EventHandler<ggez::GameError> for MainState {
         if check_collision(self.ball_pos, self.player_1_pos) 
             || check_collision(self.ball_pos, self.player_2_pos) {
             self.ball_velocity.x *= -1.0;
+            let _ = self.jump_sound.play(ctx);
         }
 
         Ok(())

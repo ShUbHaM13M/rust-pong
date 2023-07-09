@@ -1,4 +1,5 @@
-use ggez::{ event, GameError };
+use ggez::audio::SoundSource;
+use ggez::{ event, GameError, audio };
 use ggez::graphics::{ self, Color, Drawable };
 use ggez::{ Context, GameResult };
 use ggez::glam::*;
@@ -19,7 +20,7 @@ const PADDLE_RECT: graphics::Rect = graphics::Rect::new(
 );
 
 const BALL_SIZE: f32 = 16.0;
-const BALL_SPEED: f32 = 10.0;
+const BALL_SPEED: f32 = 25.0;
 const PADDING: f32 = 10.0;
 
 
@@ -31,22 +32,38 @@ struct MainState {
     ball_pos: Vec2,
     ball_velocity: Vec2,
     loaded_custom_font: bool,
+    jump_sound: audio::Source,
+    pickup_sound: audio::Source,
+    paused: bool,
 }
 
 impl MainState {
     fn new(ctx: &mut Context) -> GameResult<MainState> {
 
-        let mut rng = rand::thread_rng();
+        // Loading custom font
+        ctx.gfx.add_font(
+            "Arcade Classic",
+            graphics::FontData::from_path(ctx, "/ArcadeClassic.ttf")?
+        );
+
+        let jump_sound = audio::Source::new(ctx, "/Jump.wav")?;
+        let pickup_sound = audio::Source::new(ctx, "/Pickup.wav")?;
+
         let (screen_width, screen_height) = ctx.gfx.drawable_size();
         let mut s = MainState { 
             player_1_pos: Vec2::new(20.0 + PADDING, screen_height * 0.5),
             player_2_pos: Vec2::new(screen_width - 20.0 - PADDING, screen_height * 0.5),
             ball_pos: Vec2::new(screen_width * 0.5, screen_height * 0.5),
-            ball_velocity: Vec2::new(rng.gen(), rng.gen()),
-            // ball_velocity: Vec2::new(-1.0, 0.0),
+            ball_velocity: Vec2::new(
+                rand::thread_rng().gen_range(0.0..1.0),
+                rand::thread_rng().gen_range(0.0..1.0)
+            ),
             player_1_score: 0,
             player_2_score: 0,
-            loaded_custom_font: false
+            loaded_custom_font: false,
+            paused: true,
+            jump_sound,
+            pickup_sound,
         };
 
 
@@ -90,7 +107,6 @@ fn move_racket (ctx: &Context, keycode: KeyCode, pos: &mut Vec2, dir: f32) {
 fn move_ball (ctx: &Context, pos: &mut Vec2, vel: &mut Vec2) {
     let screen_height = ctx.gfx.drawable_size().1;
     pos.x += vel.x * BALL_SPEED;
-    pos.y += vel.y * BALL_SPEED;
 
     if pos.y <= BALL_SIZE || pos.y >= screen_height - BALL_SIZE {
         vel.y *= -1.0;
@@ -100,6 +116,12 @@ fn move_ball (ctx: &Context, pos: &mut Vec2, vel: &mut Vec2) {
 fn reset_game(game_state: &mut MainState, ctx: &mut Context) {
     let (screen_width, screen_height) = ctx.gfx.drawable_size();
     game_state.ball_pos = Vec2::new(screen_width * 0.5, screen_height * 0.5);
+    game_state.ball_velocity = Vec2::new(
+        rand::thread_rng().gen_range(0.0..1.0),
+        rand::thread_rng().gen_range(0.0..1.0)
+    );
+    let _ = game_state.pickup_sound.play(ctx);
+    game_state.paused = true;
 }
 
 fn check_collision(ball: Vec2, paddle: Vec2) -> bool {
@@ -111,6 +133,14 @@ fn check_collision(ball: Vec2, paddle: Vec2) -> bool {
 
 impl event::EventHandler<ggez::GameError> for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult {
+
+        if self.paused {
+            if ctx.keyboard.is_key_pressed(KeyCode::Space) {
+                self.paused = false;
+            }
+            return Ok(())
+        }
+
         let screen_width = ctx.gfx.drawable_size().0;
         move_racket(ctx, KeyCode::W, &mut self.player_1_pos, -1.0);
         move_racket(ctx, KeyCode::S, &mut self.player_1_pos, 1.0);
@@ -131,6 +161,7 @@ impl event::EventHandler<ggez::GameError> for MainState {
         if check_collision(self.ball_pos, self.player_1_pos) 
             || check_collision(self.ball_pos, self.player_2_pos) {
             self.ball_velocity.x *= -1.0;
+            let _ = self.jump_sound.play(ctx);
         }
 
         Ok(())

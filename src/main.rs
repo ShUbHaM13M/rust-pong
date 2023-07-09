@@ -10,7 +10,7 @@ const PADDLE_HEIGHT: f32 = 140.0;
 const PADDLE_WIDTH: f32 = 25.0;
 const PADDLE_HEIGHT_HALF: f32 = PADDLE_HEIGHT * 0.5;
 const PADDLE_WIDTH_HALF: f32 = PADDLE_WIDTH * 0.5;
-const PADDLE_SPEED: f32 = 350.0;
+const PADDLE_SPEED: f32 = 450.0;
 const PADDLE_RECT: graphics::Rect = graphics::Rect::new(
     -PADDLE_WIDTH_HALF, 
     -PADDLE_HEIGHT_HALF,
@@ -19,8 +19,7 @@ const PADDLE_RECT: graphics::Rect = graphics::Rect::new(
 );
 
 const BALL_SIZE: f32 = 16.0;
-const BALL_SPEED: f32 = 20.0;
-
+const BALL_SPEED: f32 = 10.0;
 const PADDING: f32 = 10.0;
 
 
@@ -31,20 +30,15 @@ struct MainState {
     player_2_score: i32,
     ball_pos: Vec2,
     ball_velocity: Vec2,
+    loaded_custom_font: bool,
 }
 
 impl MainState {
     fn new(ctx: &mut Context) -> GameResult<MainState> {
 
-        // Loading custom font
-        ctx.gfx.add_font(
-            "Arcade Classic",
-            graphics::FontData::from_path(ctx, "/ArcadeClassic.ttf")?
-        );
-
         let mut rng = rand::thread_rng();
         let (screen_width, screen_height) = ctx.gfx.drawable_size();
-        let s = MainState { 
+        let mut s = MainState { 
             player_1_pos: Vec2::new(20.0 + PADDING, screen_height * 0.5),
             player_2_pos: Vec2::new(screen_width - 20.0 - PADDING, screen_height * 0.5),
             ball_pos: Vec2::new(screen_width * 0.5, screen_height * 0.5),
@@ -52,7 +46,16 @@ impl MainState {
             // ball_velocity: Vec2::new(-1.0, 0.0),
             player_1_score: 0,
             player_2_score: 0,
+            loaded_custom_font: false
         };
+
+
+        // Loading custom font
+        if let Ok(custom_font) = graphics::FontData::from_path(ctx, "/ArcadeClassic.ttf") {
+            ctx.gfx.add_font("Arcade Classic", custom_font);
+            s.loaded_custom_font = true
+        } 
+
         Ok(s)
     }
 }
@@ -158,7 +161,9 @@ impl event::EventHandler<ggez::GameError> for MainState {
         canvas.draw(&ball, self.ball_pos);
 
         let mut score_text = ggez::graphics::Text::new(format!("{}              {}", self.player_1_score, self.player_2_score));
-        score_text.set_font("Arcade Classic");
+        if self.loaded_custom_font {
+            score_text.set_font("Arcade Classic");
+        }
         score_text.set_scale(40.0);
 
         canvas.draw(
